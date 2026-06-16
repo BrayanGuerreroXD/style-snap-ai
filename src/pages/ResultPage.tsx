@@ -43,7 +43,7 @@ export default function ResultPage() {
           <Stack spacing={1.5} sx={{ pt: 1 }}>
             <PrimaryButton
               startIcon={<DownloadIcon />}
-              onClick={() => downloadImage(data.generatedUrl, `stylesnap-${data.id}.png`)}
+              onClick={() => downloadImage(data.generatedUrl, `stylesnap-${data.id}.jpg`)}
             >
               Descargar
             </PrimaryButton>

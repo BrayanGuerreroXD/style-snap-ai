@@ -7,31 +7,23 @@ export interface StylePrompt {
   prompt: string
 }
 
+// Text-to-image prompts for Hugging Face FLUX.1-schnell. The serverless
+// inference API is text-only, so each prompt fully describes the portrait
+// (the user's selfie is stored but not used as a generation input).
 export const STYLE_PROMPTS: Record<string, string> = {
-  'pixel-art': 'a detailed 8-bit pixel art portrait',
-  anime: 'an anime hero portrait',
-  medieval: 'a magical medieval fantasy portrait',
-  cyberpunk: 'a cyberpunk futuristic portrait with neon lighting',
-  comic: 'a comic book superhero portrait',
-  'oil-painting': 'a realistic classic oil painting portrait',
+  'pixel-art': 'a detailed 8-bit pixel art portrait of a heroic character',
+  anime: 'an anime hero portrait, cel-shaded, dynamic',
+  medieval: 'a magical medieval fantasy mage portrait, ornate robes',
+  cyberpunk: 'a cyberpunk futuristic rebel portrait with neon lighting',
+  comic: 'a comic book superhero portrait, bold inks, halftone shading',
+  'oil-painting': 'a realistic classic oil painting portrait, museum quality',
 }
 
-export const SYSTEM_PROMPT = [
-  'You are an expert AI portrait artist.',
-  'Preserve facial identity, pose and proportions.',
-  'Apply the requested artistic style.',
-  'Generate a high quality portrait.',
-].join(' ')
-
-export function buildUserPrompt(stylePrompt: string): string {
+export function buildPrompt(stylePrompt: string): string {
   return [
-    `Transform this selfie into: ${stylePrompt}.`,
-    'Requirements:',
-    '- Keep facial identity recognizable',
-    '- High quality',
-    '- Detailed',
-    '- Artistic',
-    '- No text',
-    '- No watermark',
-  ].join('\n')
+    `${stylePrompt},`,
+    'close-up head and shoulders, looking at the camera, centered composition,',
+    'high quality, highly detailed, artistic, vibrant, dramatic lighting,',
+    'no text, no watermark',
+  ].join(' ')
 }

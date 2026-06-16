@@ -1,17 +1,19 @@
 // Edge Function: generate-image
-// POST { image, styleId } -> calls Gemini 2.5 Flash Image, stores both images,
-//   records the generation, returns signed URLs.
+// POST { image, styleId } -> generates a portrait with Hugging Face FLUX.1-schnell
+//   (text-to-image), stores the selfie + generated image, records the
+//   generation, returns signed URLs.
 // GET  /generate-image/:id -> returns fresh signed URLs for a past generation.
 //
 // Secrets (supabase secrets set ...):
-//   GEMINI_API_KEY      required for real generation
-//   MOCK_GENERATION     "true" to skip Gemini and echo the selfie (demo without billing)
+//   HF_TOKEN            required for real generation (Hugging Face)
+//   HF_MODEL            optional, defaults to black-forest-labs/FLUX.1-schnell
+//   MOCK_GENERATION     "true" to skip HF and echo the selfie (offline demo)
 // Auto-injected by the runtime: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { STYLE_PROMPTS, SYSTEM_PROMPT, buildUserPrompt } from './styles.ts'
+import { STYLE_PROMPTS, buildPrompt } from './styles.ts'
 
-const GEMINI_MODEL = 'gemini-2.5-flash-image'
+const DEFAULT_HF_MODEL = 'black-forest-labs/FLUX.1-schnell'
 const SELFIES_BUCKET = 'selfies'
 const GENERATED_BUCKET = 'generated'
 const SIGNED_URL_TTL = 3600 // 1 hour
@@ -43,48 +45,41 @@ function stripDataUrl(image: string): { bytes: Uint8Array; base64: string } {
   return { bytes, base64 }
 }
 
-async function callGemini(base64: string, stylePrompt: string): Promise<Uint8Array> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY')
-  if (!apiKey) throw new Error('gemini-error: missing GEMINI_API_KEY')
+// Calls the Hugging Face serverless inference router (text-to-image). The
+// endpoint returns raw image bytes (image/jpeg). Retries on 503 cold-starts.
+async function callHuggingFace(prompt: string): Promise<Uint8Array> {
+  const token = Deno.env.get('HF_TOKEN')
+  if (!token) throw new Error('gemini-error: missing HF_TOKEN')
+  const model = Deno.env.get('HF_MODEL') ?? DEFAULT_HF_MODEL
+  const endpoint = `https://router.huggingface.co/hf-inference/models/${model}`
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-    {
+  const maxAttempts = 3
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: buildUserPrompt(stylePrompt) },
-              { inline_data: { mime_type: 'image/jpeg', data: base64 } },
-            ],
-          },
-        ],
-        generationConfig: { responseModalities: ['IMAGE'] },
-      }),
-    },
-  )
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        // Block until the model is warm instead of failing fast on cold start.
+        'x-wait-for-model': 'true',
+      },
+      body: JSON.stringify({ inputs: prompt }),
+    })
 
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`gemini-error: ${res.status} ${text.slice(0, 300)}`)
-  }
-
-  const data = await res.json()
-  const parts = data?.candidates?.[0]?.content?.parts ?? []
-  for (const p of parts) {
-    const inline = p.inlineData ?? p.inline_data
-    if (inline?.data) {
-      const binary = atob(inline.data)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-      return bytes
+    const contentType = res.headers.get('content-type') ?? ''
+    if (res.ok && contentType.startsWith('image/')) {
+      return new Uint8Array(await res.arrayBuffer())
     }
+
+    const text = await res.text()
+    // 503 => model still loading; back off and retry.
+    if (res.status === 503 && attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 4000 * attempt))
+      continue
+    }
+    throw new Error(`gemini-error: HF ${res.status} ${text.slice(0, 300)}`)
   }
-  throw new Error('gemini-error: no image in response')
+  throw new Error('gemini-error: HF model did not respond in time')
 }
 
 async function signedUrl(bucket: string, path: string): Promise<string> {
@@ -112,13 +107,13 @@ async function handlePost(req: Request): Promise<Response> {
     return json({ error: 'Unknown styleId', code: 'invalid-capture' }, 400)
   }
 
-  const { bytes: originalBytes, base64 } = stripDataUrl(image)
+  const { bytes: originalBytes } = stripDataUrl(image)
 
   // Generate (or mock).
   let generatedBytes: Uint8Array
   const mock = Deno.env.get('MOCK_GENERATION') === 'true'
   try {
-    generatedBytes = mock ? originalBytes : await callGemini(base64, stylePrompt)
+    generatedBytes = mock ? originalBytes : await callHuggingFace(buildPrompt(stylePrompt))
   } catch (e) {
     const msg = String(e)
     const code = msg.includes('storage-error') ? 'storage-error' : 'gemini-error'
@@ -128,7 +123,7 @@ async function handlePost(req: Request): Promise<Response> {
   // Store both images.
   const id = crypto.randomUUID()
   const originalPath = `${id}.jpg`
-  const generatedPath = `${id}.png`
+  const generatedPath = `${id}.jpg`
   try {
     const up1 = await admin.storage
       .from(SELFIES_BUCKET)
@@ -137,7 +132,7 @@ async function handlePost(req: Request): Promise<Response> {
     const up2 = await admin.storage
       .from(GENERATED_BUCKET)
       .upload(generatedPath, generatedBytes, {
-        contentType: mock ? 'image/jpeg' : 'image/png',
+        contentType: 'image/jpeg',
         upsert: true,
       })
     if (up2.error) throw new Error(`storage-error: ${up2.error.message}`)

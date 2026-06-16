@@ -1,19 +1,23 @@
 # StyleSnap AI
 
 PWA mobile-first: toma una selfie con la cámara frontal, elige uno de 3 estilos
-aleatorios y obtén un retrato artístico generado con IA (Gemini 2.5 Flash Image).
+aleatorios y obtén un retrato artístico generado con IA (Hugging Face FLUX.1-schnell).
 
 - **Frontend:** React + Vite + TypeScript + MUI + React Router + React Query, PWA.
 - **Backend:** Supabase Edge Function (`generate-image`) + Storage + Postgres.
-- **IA:** `gemini-2.5-flash-image` (llamada solo desde la Edge Function).
+- **IA:** Hugging Face Serverless Inference — `black-forest-labs/FLUX.1-schnell`
+  (text-to-image, llamado solo desde la Edge Function).
 - **Diseño:** design system "Lumina Creative" (Google Stitch) — ver `docs/design/`.
+
+> **Nota:** FLUX.1-schnell vía la Inference API es **text-to-image**: genera el
+> retrato a partir del prompt del estilo, no usa la selfie como entrada, por lo que
+> **no preserva la identidad facial**. La selfie se guarda como `original`.
 
 ## Requisitos
 
 - Node 20+ y npm
 - Supabase CLI (`npx supabase`)
-- Cuenta de Google AI con **billing habilitado** para generación de imágenes
-  (el free tier devuelve HTTP 429; ver más abajo).
+- Un token de Hugging Face (`HF_TOKEN`) con acceso a la Inference API.
 
 ## Desarrollo local
 
@@ -33,23 +37,20 @@ Proyecto: `kmxehgjftoashzhmfjhr` (región us-east-2).
 export SUPABASE_DB_PASSWORD=...
 npx supabase link --project-ref kmxehgjftoashzhmfjhr
 npx supabase db push                       # crea tabla generations + buckets privados
-npx supabase secrets set GEMINI_API_KEY=...
+npx supabase secrets set HF_TOKEN=hf_...    # token de Hugging Face
+# opcional: cambiar de modelo
+# npx supabase secrets set HF_MODEL=stabilityai/stable-diffusion-xl-base-1.0
 npx supabase functions deploy generate-image
 ```
 
-### Modo demo sin billing
+### Modo demo offline
 
-Mientras no haya billing en Gemini, puedes ver el flujo completo activando el modo
-mock (la función devuelve la propia selfie como "resultado"):
-
-```bash
-npx supabase secrets set MOCK_GENERATION=true
-```
-
-Para generación real, desactívalo:
+Para ver el flujo completo sin llamar a Hugging Face (la función devuelve la propia
+selfie como "resultado"):
 
 ```bash
-npx supabase secrets unset MOCK_GENERATION
+npx supabase secrets set MOCK_GENERATION=true   # demo
+npx supabase secrets unset MOCK_GENERATION      # generación real
 ```
 
 ## Modelo de datos

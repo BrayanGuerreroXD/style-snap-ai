@@ -13,7 +13,7 @@ Valor: selfie rápida → estilos aleatorios → resultado visual llamativo → 
 
 - **Frontend:** React + Vite + TypeScript, MUI, React Router, React Query (`@tanstack/react-query`), `vite-plugin-pwa`.
 - **Backend:** Supabase (cloud project `kmxehgjftoashzhmfjhr`, región us-east-2) — Edge Function, Storage, Postgres.
-- **IA:** `gemini-2.5-flash-image` (image-to-image) vía Gemini API, llamado **solo** desde la Edge Function.
+- **IA:** Hugging Face Serverless Inference, `black-forest-labs/FLUX.1-schnell` (text-to-image), llamado **solo** desde la Edge Function. *(Migrado desde Gemini el 2026-06-16: la key de Gemini era free-tier sin image-gen. Caveat: text-to-image no preserva identidad facial.)*
 - **Hosting:** Frontend en GitHub Pages; backend en Supabase.
 
 ## 3. Diseño visual — "Lumina Creative" (de Google Stitch)
@@ -57,9 +57,9 @@ solo manda `styleId`. Gemini no inventa estilos.
 
 1. Captura selfie → **downscale client-side** (máx ~1024px, JPEG ~0.85) → base64.
 2. `POST` a Edge Function `generate-image` con `{ image, styleId }` (header anon key).
-3. Función valida payload → busca estilo en catálogo interno → arma system+user prompt.
-4. Llama `gemini-2.5-flash-image` (image+text → image).
-5. Decodifica imagen → sube original a bucket `selfies`, generada a `generated` (**ambos privados**).
+3. Función valida payload → busca estilo en catálogo interno → arma el prompt de texto.
+4. Llama HF `FLUX.1-schnell` (text → image; devuelve bytes JPEG, retry en cold-start 503).
+5. Sube original a bucket `selfies`, generada a `generated` (**ambos privados**).
 6. Inserta fila en `generations`.
 7. Responde `{ id, generatedUrl, originalUrl }` como **signed URLs** (1h).
 8. Frontend muestra resultado; permite descargar y volver a capturar.
@@ -81,11 +81,10 @@ Buckets: `selfies` (privado), `generated` (privado). RLS habilitado; solo servic
 
 ## 9. Prompt (server-side)
 
-System: `You are an expert AI portrait artist. Preserve facial identity, pose and
-proportions. Apply the requested artistic style. Generate a high quality portrait.`
-
-User: `Transform this selfie into: {{STYLE_PROMPT}}` + requirements (keep identity,
-high quality, detailed, artistic, no text, no watermark).
+Text-to-image prompt por estilo (catálogo en `supabase/functions/generate-image/styles.ts`).
+`buildPrompt(stylePrompt)` produce: `{{STYLE_PROMPT}}, close-up head and shoulders,
+looking at the camera, centered composition, high quality, highly detailed, artistic,
+vibrant, dramatic lighting, no text, no watermark`.
 
 ## 10. Manejo de errores
 
