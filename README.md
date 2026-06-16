@@ -1,23 +1,26 @@
 # StyleSnap AI
 
 PWA mobile-first: toma una selfie con la cámara frontal, elige uno de 3 estilos
-aleatorios y obtén un retrato artístico generado con IA (Hugging Face FLUX.1-schnell).
+aleatorios y obtén un retrato artístico generado con IA (Hugging Face FLUX.2-klein-9B).
 
 - **Frontend:** React + Vite + TypeScript + MUI + React Router + React Query, PWA.
 - **Backend:** Supabase Edge Function (`generate-image`) + Storage + Postgres.
-- **IA:** Hugging Face Serverless Inference — `black-forest-labs/FLUX.1-schnell`
-  (text-to-image, llamado solo desde la Edge Function).
+- **IA:** Hugging Face Inference — `black-forest-labs/FLUX.2-klein-9B`
+  (**image-to-image**, vía provider `replicate`, llamado solo desde la Edge Function).
 - **Diseño:** design system "Lumina Creative" (Google Stitch) — ver `docs/design/`.
 
-> **Nota:** FLUX.1-schnell vía la Inference API es **text-to-image**: genera el
-> retrato a partir del prompt del estilo, no usa la selfie como entrada, por lo que
-> **no preserva la identidad facial**. La selfie se guarda como `original`.
+> **Nota:** FLUX.2-klein-9B es **image-to-image**: usa la selfie como entrada y la
+> reestiliza conservando identidad y pose. Corre por el provider **Replicate** (de
+> pago); en cuenta free funciona con el crédito mensual de HF, pero se agota con uso
+> intensivo (luego devuelve error de billing). Cambia `HF_MODEL`/`HF_PROVIDER` para
+> usar otro modelo/proveedor.
 
 ## Requisitos
 
 - Node 20+ y npm
 - Supabase CLI (`npx supabase`)
-- Un token de Hugging Face (`HF_TOKEN`) con acceso a la Inference API.
+- Un token de Hugging Face (`HF_TOKEN`) con acceso a la Inference API y al provider
+  Replicate (gate del modelo aceptado en su página de HF).
 
 ## Desarrollo local
 
@@ -38,8 +41,8 @@ export SUPABASE_DB_PASSWORD=...
 npx supabase link --project-ref kmxehgjftoashzhmfjhr
 npx supabase db push                       # crea tabla generations + buckets privados
 npx supabase secrets set HF_TOKEN=hf_...    # token de Hugging Face
-# opcional: cambiar de modelo
-# npx supabase secrets set HF_MODEL=stabilityai/stable-diffusion-xl-base-1.0
+# opcional: cambiar modelo / provider (defaults: FLUX.2-klein-9B / replicate)
+# npx supabase secrets set HF_MODEL=... HF_PROVIDER=...
 npx supabase functions deploy generate-image
 ```
 

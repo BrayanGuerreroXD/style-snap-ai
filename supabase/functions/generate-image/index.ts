@@ -1,19 +1,22 @@
 // Edge Function: generate-image
-// POST { image, styleId } -> generates a portrait with Hugging Face FLUX.1-schnell
-//   (text-to-image), stores the selfie + generated image, records the
-//   generation, returns signed URLs.
+// POST { image, styleId } -> edits the selfie into the chosen style with
+//   Hugging Face FLUX.2-klein-9B (image-to-image), stores the selfie +
+//   generated image, records the generation, returns signed URLs.
 // GET  /generate-image/:id -> returns fresh signed URLs for a past generation.
 //
 // Secrets (supabase secrets set ...):
 //   HF_TOKEN            required for real generation (Hugging Face)
-//   HF_MODEL            optional, defaults to black-forest-labs/FLUX.1-schnell
+//   HF_MODEL            optional, defaults to black-forest-labs/FLUX.2-klein-9B
+//   HF_PROVIDER         optional inference provider, defaults to "replicate"
 //   MOCK_GENERATION     "true" to skip HF and echo the selfie (offline demo)
 // Auto-injected by the runtime: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { InferenceClient } from 'npm:@huggingface/inference@4'
 import { STYLE_PROMPTS, buildPrompt } from './styles.ts'
 
-const DEFAULT_HF_MODEL = 'black-forest-labs/FLUX.1-schnell'
+const DEFAULT_HF_MODEL = 'black-forest-labs/FLUX.2-klein-9B'
+const DEFAULT_HF_PROVIDER = 'replicate'
 const SELFIES_BUCKET = 'selfies'
 const GENERATED_BUCKET = 'generated'
 const SIGNED_URL_TTL = 3600 // 1 hour
@@ -45,41 +48,28 @@ function stripDataUrl(image: string): { bytes: Uint8Array; base64: string } {
   return { bytes, base64 }
 }
 
-// Calls the Hugging Face serverless inference router (text-to-image). The
-// endpoint returns raw image bytes (image/jpeg). Retries on 503 cold-starts.
-async function callHuggingFace(prompt: string): Promise<Uint8Array> {
+// Edits the selfie into the chosen style via Hugging Face image-to-image
+// (FLUX.2-klein-9B routed through the configured provider). Returns image bytes.
+async function callHuggingFace(imageBytes: Uint8Array, prompt: string): Promise<Uint8Array> {
   const token = Deno.env.get('HF_TOKEN')
   if (!token) throw new Error('gemini-error: missing HF_TOKEN')
   const model = Deno.env.get('HF_MODEL') ?? DEFAULT_HF_MODEL
-  const endpoint = `https://router.huggingface.co/hf-inference/models/${model}`
+  const provider = Deno.env.get('HF_PROVIDER') ?? DEFAULT_HF_PROVIDER
 
-  const maxAttempts = 3
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        // Block until the model is warm instead of failing fast on cold start.
-        'x-wait-for-model': 'true',
+  const client = new InferenceClient(token)
+  try {
+    const out = await client.imageToImage(
+      {
+        model,
+        inputs: new Blob([imageBytes], { type: 'image/jpeg' }),
+        parameters: { prompt },
       },
-      body: JSON.stringify({ inputs: prompt }),
-    })
-
-    const contentType = res.headers.get('content-type') ?? ''
-    if (res.ok && contentType.startsWith('image/')) {
-      return new Uint8Array(await res.arrayBuffer())
-    }
-
-    const text = await res.text()
-    // 503 => model still loading; back off and retry.
-    if (res.status === 503 && attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 4000 * attempt))
-      continue
-    }
-    throw new Error(`gemini-error: HF ${res.status} ${text.slice(0, 300)}`)
+      { provider },
+    )
+    return new Uint8Array(await out.arrayBuffer())
+  } catch (e) {
+    throw new Error(`gemini-error: HF ${e instanceof Error ? e.message : String(e)}`)
   }
-  throw new Error('gemini-error: HF model did not respond in time')
 }
 
 async function signedUrl(bucket: string, path: string): Promise<string> {
@@ -113,7 +103,9 @@ async function handlePost(req: Request): Promise<Response> {
   let generatedBytes: Uint8Array
   const mock = Deno.env.get('MOCK_GENERATION') === 'true'
   try {
-    generatedBytes = mock ? originalBytes : await callHuggingFace(buildPrompt(stylePrompt))
+    generatedBytes = mock
+      ? originalBytes
+      : await callHuggingFace(originalBytes, buildPrompt(stylePrompt))
   } catch (e) {
     const msg = String(e)
     const code = msg.includes('storage-error') ? 'storage-error' : 'gemini-error'

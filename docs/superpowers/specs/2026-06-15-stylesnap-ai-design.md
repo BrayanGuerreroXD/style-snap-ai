@@ -13,7 +13,7 @@ Valor: selfie rápida → estilos aleatorios → resultado visual llamativo → 
 
 - **Frontend:** React + Vite + TypeScript, MUI, React Router, React Query (`@tanstack/react-query`), `vite-plugin-pwa`.
 - **Backend:** Supabase (cloud project `kmxehgjftoashzhmfjhr`, región us-east-2) — Edge Function, Storage, Postgres.
-- **IA:** Hugging Face Serverless Inference, `black-forest-labs/FLUX.1-schnell` (text-to-image), llamado **solo** desde la Edge Function. *(Migrado desde Gemini el 2026-06-16: la key de Gemini era free-tier sin image-gen. Caveat: text-to-image no preserva identidad facial.)*
+- **IA:** Hugging Face Inference, `black-forest-labs/FLUX.2-klein-9B` (**image-to-image**) vía provider `replicate`, llamado **solo** desde la Edge Function con `@huggingface/inference`. *(Historia: Gemini free-tier sin image-gen → FLUX.1-schnell text-to-image (no usaba la selfie) → FLUX.2-klein-9B img2img que sí usa la selfie y preserva identidad. Replicate es de pago; en cuenta free corre con crédito mensual de HF.)*
 - **Hosting:** Frontend en GitHub Pages; backend en Supabase.
 
 ## 3. Diseño visual — "Lumina Creative" (de Google Stitch)
@@ -57,8 +57,8 @@ solo manda `styleId`. Gemini no inventa estilos.
 
 1. Captura selfie → **downscale client-side** (máx ~1024px, JPEG ~0.85) → base64.
 2. `POST` a Edge Function `generate-image` con `{ image, styleId }` (header anon key).
-3. Función valida payload → busca estilo en catálogo interno → arma el prompt de texto.
-4. Llama HF `FLUX.1-schnell` (text → image; devuelve bytes JPEG, retry en cold-start 503).
+3. Función valida payload → busca estilo en catálogo interno → arma la instrucción de edición.
+4. Llama HF `FLUX.2-klein-9B` (image+prompt → image) enviando la selfie como entrada.
 5. Sube original a bucket `selfies`, generada a `generated` (**ambos privados**).
 6. Inserta fila en `generations`.
 7. Responde `{ id, generatedUrl, originalUrl }` como **signed URLs** (1h).
@@ -81,10 +81,10 @@ Buckets: `selfies` (privado), `generated` (privado). RLS habilitado; solo servic
 
 ## 9. Prompt (server-side)
 
-Text-to-image prompt por estilo (catálogo en `supabase/functions/generate-image/styles.ts`).
-`buildPrompt(stylePrompt)` produce: `{{STYLE_PROMPT}}, close-up head and shoulders,
-looking at the camera, centered composition, high quality, highly detailed, artistic,
-vibrant, dramatic lighting, no text, no watermark`.
+Instrucción de edición por estilo (catálogo en `supabase/functions/generate-image/styles.ts`).
+`buildPrompt(stylePrompt)` produce: `Restyle this portrait as {{STYLE_PROMPT}}. Keep the
+same person, facial identity, pose and composition. High quality, highly detailed,
+artistic. No text, no watermark.`
 
 ## 10. Manejo de errores
 

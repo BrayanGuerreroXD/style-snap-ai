@@ -7,23 +7,22 @@ export interface StylePrompt {
   prompt: string
 }
 
-// Text-to-image prompts for Hugging Face FLUX.1-schnell. The serverless
-// inference API is text-only, so each prompt fully describes the portrait
-// (the user's selfie is stored but not used as a generation input).
+// Image editing instructions for Hugging Face FLUX.2-klein-9B (image-to-image).
+// The user's selfie is the input; each style is phrased as a restyling target
+// so the model keeps the person's identity and pose while changing the art style.
 export const STYLE_PROMPTS: Record<string, string> = {
-  'pixel-art': 'a detailed 8-bit pixel art portrait of a heroic character',
-  anime: 'an anime hero portrait, cel-shaded, dynamic',
-  medieval: 'a magical medieval fantasy mage portrait, ornate robes',
-  cyberpunk: 'a cyberpunk futuristic rebel portrait with neon lighting',
-  comic: 'a comic book superhero portrait, bold inks, halftone shading',
-  'oil-painting': 'a realistic classic oil painting portrait, museum quality',
+  'pixel-art': 'detailed 8-bit pixel art',
+  anime: 'an anime hero, cel-shaded and dynamic',
+  medieval: 'a magical medieval fantasy mage with ornate robes',
+  cyberpunk: 'a cyberpunk rebel with neon lighting',
+  comic: 'a comic book superhero with bold inks and halftone shading',
+  'oil-painting': 'a classic oil painting, museum quality',
 }
 
 export function buildPrompt(stylePrompt: string): string {
   return [
-    `${stylePrompt},`,
-    'close-up head and shoulders, looking at the camera, centered composition,',
-    'high quality, highly detailed, artistic, vibrant, dramatic lighting,',
-    'no text, no watermark',
+    `Restyle this portrait as ${stylePrompt}.`,
+    'Keep the same person, facial identity, pose and composition.',
+    'High quality, highly detailed, artistic. No text, no watermark.',
   ].join(' ')
 }
