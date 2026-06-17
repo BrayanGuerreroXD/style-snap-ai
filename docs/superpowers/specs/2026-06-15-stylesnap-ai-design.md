@@ -13,7 +13,7 @@ Valor: selfie rápida → estilos aleatorios → resultado visual llamativo → 
 
 - **Frontend:** React + Vite + TypeScript, MUI, React Router, React Query (`@tanstack/react-query`), `vite-plugin-pwa`.
 - **Backend:** Supabase (cloud project `kmxehgjftoashzhmfjhr`, región us-east-2) — Edge Function, Storage, Postgres.
-- **IA:** Hugging Face Inference, `black-forest-labs/FLUX.2-klein-9B` (**image-to-image**) vía provider `replicate`, llamado **solo** desde la Edge Function con `@huggingface/inference`. *(Historia: Gemini free-tier sin image-gen → FLUX.1-schnell text-to-image (no usaba la selfie) → FLUX.2-klein-9B img2img que sí usa la selfie y preserva identidad. Replicate es de pago; en cuenta free corre con crédito mensual de HF.)*
+- **IA:** image-to-image (usa la selfie, preserva identidad). La Edge Function elige backend por secrets: `MOCK_GENERATION` → demo; `HF_SPACE` → **Space Gradio gratis** (`Manjushri/SDXL-Turbo-Img2Img-CPU`, vía su API HTTP `/gradio_api/call/predict`); si no, **provider de pago** (`FLUX.2-klein-9B`/`replicate` con `@huggingface/inference`). *(Historia: Gemini free-tier sin image-gen → FLUX.1-schnell text-to-image (no usaba la selfie) → FLUX.2-klein-9B img2img (de pago, créditos HF se agotaron) → Space CPU gratis para tests.)*
 - **Hosting:** Frontend en GitHub Pages; backend en Supabase.
 
 ## 3. Diseño visual — "Lumina Creative" (de Google Stitch)

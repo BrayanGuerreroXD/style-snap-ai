@@ -34,14 +34,15 @@ export function captureFrame(
   return canvas.toDataURL('image/jpeg', quality)
 }
 
-/** Trigger a browser download for an image URL. */
-export async function downloadImage(url: string, filename: string): Promise<void> {
+/** Trigger a browser download for an image URL, naming the file from its MIME type. */
+export async function downloadImage(url: string, baseName: string): Promise<void> {
   const res = await fetch(url)
   const blob = await res.blob()
+  const ext = blob.type.split('/')[1]?.split('+')[0] || 'jpg'
   const objectUrl = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = objectUrl
-  a.download = filename
+  a.download = `${baseName}.${ext}`
   document.body.appendChild(a)
   a.click()
   a.remove()

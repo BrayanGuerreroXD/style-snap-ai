@@ -9,11 +9,16 @@ aleatorios y obtén un retrato artístico generado con IA (Hugging Face FLUX.2-k
   (**image-to-image**, vía provider `replicate`, llamado solo desde la Edge Function).
 - **Diseño:** design system "Lumina Creative" (Google Stitch) — ver `docs/design/`.
 
-> **Nota:** FLUX.2-klein-9B es **image-to-image**: usa la selfie como entrada y la
-> reestiliza conservando identidad y pose. Corre por el provider **Replicate** (de
-> pago); en cuenta free funciona con el crédito mensual de HF, pero se agota con uso
-> intensivo (luego devuelve error de billing). Cambia `HF_MODEL`/`HF_PROVIDER` para
-> usar otro modelo/proveedor.
+> **Backends de generación** (la Edge Function elige por secrets, primer match gana):
+> - `MOCK_GENERATION="true"` → demo offline (devuelve la selfie).
+> - `HF_SPACE="owner/Space"` → **img2img GRATIS** vía un Space público de Gradio (sin
+>   créditos). Default usado en este proyecto: `Manjushri/SDXL-Turbo-Img2Img-CPU`
+>   (CPU, ~35s/imagen, calidad media; ideal para pruebas sin billing).
+> - Sin lo anterior → **provider de pago** (`HF_MODEL`=FLUX.2-klein-9B, `HF_PROVIDER`=replicate;
+>   mejor calidad, consume créditos de HF/Replicate).
+>
+> Todos los caminos img2img usan la selfie y preservan identidad/pose. El Space gratis
+> puede estar en cola, dormirse o cambiar (es un demo público) — suficiente para tests.
 
 ## Requisitos
 
